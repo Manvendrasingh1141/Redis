@@ -1,83 +1,248 @@
-# Basics of Redis and BullMQ
+# Redis and BullMQ Examples
 
-Redis is an open-source, in-memory data structure store that can be used as a database, cache, and message broker. It supports various data structures such as strings, hashes, lists, sets, and more. Redis is known for its high performance, scalability, and support for advanced features like Pub/Sub messaging and Lua scripting.
+A Node.js project for learning and demonstrating Redis, MongoDB, Redis Pub/Sub, and BullMQ. Each example is an independent Express server.
 
+Repository: [github.com/Manvendrasingh1141/Redis](https://github.com/Manvendrasingh1141/Redis)
 
+## What Is Redis?
 
-## Why We Need Redis
+Redis is an in-memory data store that keeps data as key-value structures. It is commonly used as a cache, session store, counter, queue, message broker, and fast temporary database. Redis supports strings, hashes, lists, sets, sorted sets, expiration times, and Pub/Sub channels.
 
-Redis is needed in applications for several reasons:
+Redis is fast because most operations happen in memory. It can also persist data to disk; this project enables Redis Append Only File persistence in Docker Compose.
 
-1. **Caching:** Redis can be used to cache frequently accessed data, reducing the load on the primary database and improving application performance.
-2. **Session management:** Redis can store user session data, allowing for fast retrieval and management of user sessions in web applications.
-3. **Real-time analytics:** Redis can be used to store and analyze real-time data, enabling applications to provide instant insights and analytics.
+## Why Use Redis?
 
+- **Fast reads and writes:** useful for low-latency data.
+- **Caching:** reduce repeated calls to a slower database or API.
+- **Expiration:** automatically remove temporary data such as OTPs and sessions.
+- **Counters and rankings:** use atomic commands such as `INCR` and sorted sets such as `ZINCRBY`.
+- **Queues:** use Redis lists for simple FIFO work or BullMQ for retries and workers.
+- **Real-time messaging:** use Pub/Sub to notify services about events.
 
-## Pros and Cons of Redis
+## Problems Redis Solves
 
-### Pros
+| Problem | Redis solution | Example in this project |
+| --- | --- | --- |
+| Repeated database or API requests are slow | Cache a value temporarily | Banner and user-data endpoints |
+| A value must expire automatically | Set a TTL with `EX` | OTPs expire after 30 seconds |
+| Concurrent requests update a number | Use atomic counters | Post view counts |
+| Work should be processed later | Store jobs in a queue | Email list queue and BullMQ |
+| Clients need event notifications | Publish and subscribe to a channel | Notification publisher/subscriber |
+| Items need ranking by score | Use a sorted set | Post leaderboard |
 
-1. **High performance:** Redis is designed for speed and can handle a large number of read and write operations per second, making it suitable for high-performance applications.
-2. **Versatile data structures:** Redis supports various data structures, allowing developers to choose the most appropriate structure for their use case.
+Redis is usually a complement to a durable database, not a replacement for one.
 
-### Cons
+## Project Examples
 
-1. **Memory usage:** Redis stores data in memory, which can lead to high memory usage for large datasets. This can be a limitation for applications with limited memory resources.
-2. **Persistence:** While Redis provides options for data persistence, it may not be suitable for applications that require strong durability guarantees.
+### Redis CRUD and MongoDB: `src/crud.js`
 
+Runs on port `3002`:
 
-## Using Redis with MongoDB
+- `GET /redis` checks Redis with `PING`.
+- `GET /mongo` connects to MongoDB.
+- `POST /banner`, `GET /banner`, `DELETE /banner`, and `GET /banner/exists` manage `app:banner`.
 
-To use Redis with a database like MongoDB, you can follow these steps:
+```bash
+curl http://localhost:3002/redis
+curl -X POST http://localhost:3002/banner
+curl http://localhost:3002/banner
+curl http://localhost:3002/banner/exists
+curl -X DELETE http://localhost:3002/banner
+curl http://localhost:3002/mongo
+```
 
-1. Install the necessary Redis client library for your programming language, such as `ioredis` or `node-redis` for Node.js, and the MongoDB driver, such as `mongoose` for Node.js.
-2. Connect to both Redis and MongoDB in your application by providing the required connection details, including host, port, username, and password.
-3. Use Redis as a caching layer to store frequently accessed data from MongoDB. When a request is made, first check whether the data exists in Redis. If it does, retrieve it from Redis; otherwise, fetch it from MongoDB and store it in Redis for future requests.
-4. Implement cache invalidation strategies to ensure that Redis remains consistent with MongoDB. This may involve setting expiration times or updating and removing cached data when MongoDB records change.
-5. Monitor and manage the performance of both Redis and MongoDB by tuning configuration settings and monitoring resource usage.
+### Temporary OTP: `src/otp.js`
 
+Runs on port `3004`. `POST /send-otp` creates a six-digit OTP and stores it at `otp:<phoneNumber>` with a 30-second expiration. `POST /verify-otp` compares the submitted OTP with Redis.
 
-## Using Redis in Node.js
+```bash
+curl -X POST http://localhost:3004/send-otp \
+  -H 'Content-Type: application/json' \
+  -d '{"phoneNumber":"5551234567"}'
 
-To use Redis in a Node.js application, you can follow these steps:
-1. Install a Redis client library for Node.js, such as `ioredis` or `node-redis`, using npm or Yarn.
-2. Create a Redis client instance with the required connection details, such as host, port, and password.
-3. Use the client to set and get key-value pairs, manage data structures, execute commands, and perform CRUD operations.
+curl -X POST http://localhost:3004/verify-otp \
+  -H 'Content-Type: application/json' \
+  -d '{"phoneNumber":"5551234567","otp":"123456"}'
+```
 
-## Project Files
+This is a learning example. Production OTPs should not be returned in the HTTP response, and attempts should be rate-limited.
 
-### `crud.js`
+### User data: `src/user.js`
 
-This file contains CRUD operations for Redis. It includes functions to create, read, update, and delete data using `ioredis`. The `exists` function checks whether a key exists in Redis.
+Runs on port `3005`. It demonstrates JSON strings with a 30-second TTL and Redis hashes.
 
-### `otp.js`
+```bash
+curl -X POST http://localhost:3005/user/42/json \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Mia","role":"admin"}'
+curl http://localhost:3005/user/42/json
 
-This file contains functions for generating and verifying one-time passwords (OTPs).
+curl -X POST http://localhost:3005/user/42/hset \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Mia","role":"admin"}'
+curl http://localhost:3005/user/42/hgetall
+```
 
-- `generateOTP` creates a random six-digit OTP.
-- `sendOTP` sends the OTP to the user's email address or phone number.
-- `verifyOTP` checks whether the entered OTP matches the generated OTP.
-- `EX` sets an expiration time in Redis so that the OTP is valid only for a limited period.
+### Counters and leaderboard: `src/index.js`
 
-### `user.js`
+Runs on port `3006`. View counts use `INCR`; leaderboard routes use `ZINCRBY`, `ZREVRANGE`, and `ZREVRANK`.
 
-This file contains user-management functions for creating, retrieving, updating, and deleting users in Redis.
+```bash
+curl -X POST http://localhost:3006/post/post-1/view
+curl -X POST http://localhost:3006/post/post-1/leaderboard \
+  -H 'Content-Type: application/json' \
+  -d '{"points":10}'
+curl http://localhost:3006/leaderboard
+curl http://localhost:3006/leaderboard/post-1/rank
+```
 
-- `createUser` adds a new user.
-- `getUser` retrieves user information based on the provided criteria.
-- `updateUser` updates specific user details.
-- `deleteUser` removes a user.
+### Redis list queue: `src/queue.js`
 
-### `queue.js`
+Runs on port `3009`. `POST /emails` pushes a job to `queue:emails` with `RPUSH`; `GET /emails` removes the oldest job with `LPOP`.
 
-This file manages a queue of tasks. It includes functions to add tasks, process them in order, and retrieve queue status, including pending and completed tasks.
+```bash
+curl -X POST http://localhost:3009/emails \
+  -H 'Content-Type: application/json' \
+  -d '{"to":"user@example.com","subject":"Welcome","body":"Hello"}'
+curl http://localhost:3009/emails
+```
 
-Tasks are added to the right side using `RPUSH` and removed from the left side using `LPOP`, providing first-in-first-out (FIFO) processing.
+### BullMQ: `src/bullmq/`
 
-### `bullmq/`
+The worker listens to `email-queue`, simulates sending an email, and logs completed or failed jobs. Run it in its own terminal:
 
-This directory manages queues using the BullMQ library. It includes functions to add jobs, process jobs, and retrieve queue status. Jobs are processed in the order they were added.
+```bash
+node src/bullmq/worker.js
+```
 
-### `index.js`
+The current `src/bullmq/api.js` runs on port `3000` and returns a sample job payload, but it does not yet call `emailQueue.add()`. The queue and worker setup are ready for that next integration step.
 
-This file is the application entry point. It configures and initializes the Redis client, starts the Express server, imports the application modules, and defines request routes. It also includes error handling and logging.
+### Redis Pub/Sub: `src/pub-sub/`
+
+The API runs on port `3008` and publishes notifications to `notifications`:
+
+```bash
+node src/pub-sub/subscriber.js
+node src/pub-sub/api.js
+curl -X POST http://localhost:3008/notify \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"A new notification"}'
+```
+
+The current subscriber listens to `my-channel`, so it will not receive API messages until both files use the same channel name.
+
+## How to Implement Redis in Node.js
+
+1. Install a Redis client such as `ioredis`.
+2. Start Redis and create a client with its host and port.
+3. Choose the data type that matches the problem: string, hash, list, sorted set, or channel.
+4. Use expiration for temporary values and define a key naming convention.
+5. Handle connection and command errors.
+6. Keep durable records in a primary database when Redis is used as a cache or temporary store.
+
+```js
+import Redis from "ioredis";
+
+const redis = new Redis("redis://localhost:6379");
+
+await redis.set("session:42", JSON.stringify({ userId: 42 }), "EX", 3600);
+const session = await redis.get("session:42");
+console.log(JSON.parse(session));
+```
+
+## Requirements
+
+- Node.js 18 or newer
+- npm
+- Docker Desktop with Docker Compose
+
+## Run the Project
+
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/Manvendrasingh1141/Redis.git
+cd Redis
+npm install
+```
+
+Start Redis and MongoDB:
+
+```bash
+docker compose up -d
+docker compose ps
+```
+
+Start examples in separate terminals:
+
+```bash
+# Terminal 1: Redis CRUD and MongoDB check
+node src/crud.js
+
+# Terminal 2: OTP
+node src/otp.js
+
+# Terminal 3: User JSON and hash examples
+node src/user.js
+
+# Terminal 4: Counters and leaderboard
+node src/index.js
+
+# Terminal 5: Redis list queue
+node src/queue.js
+
+# Terminal 6: BullMQ worker
+node src/bullmq/worker.js
+
+# Terminal 7: BullMQ sample API
+node src/bullmq/api.js
+
+# Terminal 8: Pub/Sub subscriber
+node src/pub-sub/subscriber.js
+
+# Terminal 9: Pub/Sub API
+node src/pub-sub/api.js
+```
+
+The package scripts start the main counter/leaderboard example:
+
+```bash
+npm start
+npm run dev
+```
+
+Stop the containers when finished:
+
+```bash
+docker compose down
+```
+
+To also remove persisted Redis and MongoDB volumes:
+
+```bash
+docker compose down -v
+```
+
+## Current Learning Progress
+
+This repository currently demonstrates:
+
+- Redis strings, hashes, lists, sorted sets, counters, expiration, `EXISTS`, and `PING`.
+- Redis-backed OTP storage with expiration.
+- JSON and hash-based user data.
+- A FIFO email queue using a Redis list.
+- BullMQ queue/worker setup and job lifecycle logging.
+- Redis Pub/Sub publishing and subscription concepts.
+- Express endpoints that can be tested with `curl`.
+- Docker Compose persistence for Redis and MongoDB.
+
+## Troubleshooting
+
+- **Redis connection errors:** run `docker compose ps` and confirm port `6379` is available.
+- **MongoDB errors:** confirm port `27017` is available.
+- **Port already in use:** use another port, for example `PORT=3010 node src/index.js`.
+- **BullMQ jobs are not processed:** start `src/bullmq/worker.js` in a separate terminal.
+
+## License
+
+This project uses the ISC license declared in `package.json`.
